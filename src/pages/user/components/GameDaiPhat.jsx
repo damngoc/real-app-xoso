@@ -1,9 +1,60 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback, memo } from "react";
 import { ArrowLeft, Gamepad2, Clock } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "react-toastify";
 import { userAPI } from "@/services/userApi";
 import { formatCurrency } from "@/utils/helper";
+
+const NumberBox = memo(({ onClick, isSelected, label, disabled }) => (
+  <div
+    onClick={onClick}
+    className={`relative w-20 h-20 rounded-xl cursor-pointer active:scale-95 shadow-lg
+                ${
+                  isSelected
+                    ? "bg-gradient-to-br from-green-400 to-green-600 text-white shadow-green-300"
+                    : "bg-white text-gray-700 shadow-gray-200"
+                } border-2 ${
+      isSelected ? "border-green-500" : "border-gray-200"
+    }`}
+  >
+    <div className="absolute inset-0 flex items-center justify-center">
+      <span
+        className={`text-2xl font-bold 
+                       ${isSelected ? "text-white" : "text-red-500"}`}
+        style={{ pointerEvents: "none" }}
+      >
+        {label}
+      </span>
+    </div>
+    {isSelected && (
+      <div
+        className="absolute -top-1 -right-1 w-6 h-6 bg-yellow-400 rounded-full 
+                      flex items-center justify-center animate-pulse"
+      >
+        <span className="text-xs font-bold text-green-800">✓</span>
+      </div>
+    )}
+    <div
+      className="absolute inset-0 rounded-xl bg-gradient-to-t from-black/10 to-transparent"
+      style={{ opacity: 0 }}
+    />
+  </div>
+), (prev, next) => prev.isSelected === next.isSelected && prev.label === next.label && prev.disabled === next.disabled);
+
+const ResultBall = memo(({ number, index }) => (
+  <div
+    className="w-8 h-8 bg-gradient-to-br from-red-400 to-red-600 rounded-full 
+                 flex items-center justify-center text-white font-bold text-lg shadow-lg 
+                 transform transition-all duration-500 hover:scale-110 animate-bounce
+                 border-2 border-white"
+    style={{
+      animationDelay: `${index * 100}ms`,
+      animationDuration: "2s",
+    }}
+  >
+    {number}
+  </div>
+));
 
 const GameDaiPhat = () => {
   const navigate = useNavigate();
@@ -30,12 +81,12 @@ const GameDaiPhat = () => {
   // Lịch sử
   const [historyRounds, setHistoryRounds] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
-  // có phân trang
   const [historyPage, setHistoryPage] = useState(1);
   const [historyHasNext, setHistoryHasNext] = useState(true);
   const historyContainerRef = useRef();
+  const historySentinelRef = useRef(null);
 
-  const fetchProfile = async () => {
+  const fetchProfile = useCallback(async () => {
     try {
       const response = await userAPI.getProfile();
       const result = response?.data?.result;
@@ -43,9 +94,9 @@ const GameDaiPhat = () => {
     } catch (error) {
       console.error("Error fetching profile:", error);
     }
-  };
+  }, []);
 
-  const fetchRoomDetails = async () => {
+  const fetchRoomDetails = useCallback(async () => {
     try {
       const response = await userAPI.getRoomDetails(roomId);
       const result = response?.data?.result;
@@ -53,7 +104,6 @@ const GameDaiPhat = () => {
       setCurrentRound(result?.currentRound);
       setPreviousRound(result?.previousRound);
 
-      // Nếu remainingBettingTime trả về là mili giây, cần chia cho 1000 để lấy giây
       const rawTime = result?.currentRound?.remainingBettingTime || 0;
       const timeInSeconds =
         rawTime > 1000 ? Math.floor(rawTime / 1000) : rawTime;
@@ -61,9 +111,9 @@ const GameDaiPhat = () => {
     } catch (error) {
       console.error("Error fetching room details:", error);
     }
-  };
+  }, [roomId]);
 
-  const fetchHistoryRounds = async (page = 1, append = false) => {
+  const fetchHistoryRounds = useCallback(async (page = 1, append = false) => {
     setHistoryLoading(true);
     try {
       const response = await userAPI.geRoomBetHistory(roomId, { page });
@@ -75,32 +125,38 @@ const GameDaiPhat = () => {
       setHistoryRounds((prev) => (append ? [...prev, ...newData] : newData));
     } catch (error) {
       console.error("Error fetching room rounds:", error);
-      setHistoryRounds(append ? historyRounds : []);
+      setHistoryRounds((prev) => (append ? prev : []));
       setHistoryHasNext(false);
+    } finally {
+      setHistoryLoading(false);
     }
-    setHistoryLoading(false);
-  };
+  }, [roomId]);
 
   useEffect(() => {
     fetchProfile();
-  }, []);
+  }, [fetchProfile]);
 
-  // Lazy loading khi cuộn cuối danh sách
+  // Infinite load via IntersectionObserver
   useEffect(() => {
     if (activeTab !== "history") return;
-    const handleScroll = () => {
-      const el = historyContainerRef.current;
-      if (!el || historyLoading || !historyHasNext) return;
-      if (el.scrollHeight - el.scrollTop - el.clientHeight < 50) {
-        fetchHistoryRounds(historyPage + 1, true);
-      }
-    };
-    const el = historyContainerRef.current;
-    if (el) el.addEventListener("scroll", handleScroll);
-    return () => {
-      if (el) el.removeEventListener("scroll", handleScroll);
-    };
-  }, [activeTab, historyLoading, historyHasNext, historyPage, historyRounds]);
+    const container = historyContainerRef.current;
+    const sentinel = historySentinelRef.current;
+    if (!container || !sentinel) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting && !historyLoading && historyHasNext) {
+            fetchHistoryRounds(historyPage + 1, true);
+          }
+        });
+      },
+      { root: container, rootMargin: "0px 0px 200px 0px", threshold: 0 }
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [activeTab, historyLoading, historyHasNext, historyPage, fetchHistoryRounds]);
 
   // Khi chuyển tab hoặc room thì reset lịch sử
   useEffect(() => {
@@ -112,7 +168,7 @@ const GameDaiPhat = () => {
       setHistoryHasNext(true);
       fetchHistoryRounds(1, false);
     }
-  }, [roomId, activeTab]);
+  }, [roomId, activeTab, fetchRoomDetails, fetchHistoryRounds]);
 
   useEffect(() => {
     let interval = null;
@@ -121,7 +177,6 @@ const GameDaiPhat = () => {
         setTimer((prev) => (prev > 0 ? prev - 1 : 0));
       }, 1000);
     } else if (timer === 0 && activeTab === "game") {
-      // Random kết quả cho các round 1-4 và cập nhật hiển thị
       setSelectedNumbers((prev) => {
         const updated = { ...prev };
         for (let i = 1; i <= 4; i++) {
@@ -129,33 +184,27 @@ const GameDaiPhat = () => {
         }
         return updated;
       });
-      // khi hết thời gian, gọi lại fetchRoomDetails
       setTimeout(() => {
         fetchRoomDetails();
       }, 1000);
     }
     return () => clearInterval(interval);
-  }, [timer, activeTab]);
+  }, [timer, activeTab, fetchRoomDetails]);
 
-  // Hàm random kết quả khi hết phiên
   const generateRandomNumbers = () => {
     const randomNumbers = { A: false, S: false, H: false, X: false };
-    // Random một vị trí đúng cho mỗi round
     const positions = ["A", "S", "H", "X"];
     const randomIndex = Math.floor(Math.random() * positions.length);
     randomNumbers[positions[randomIndex]] = true;
     return randomNumbers;
   };
 
-  // Hàm tính toán tống số tiền cược -> không tính round 1, 2, 3, 4
   useEffect(() => {
-    // Chỉ tính số lệnh và tổng tiền dựa trên round5
     const count = Object.values(selectedNumbers.round5).filter(Boolean).length;
     setSelectedCount(count);
     setTotalAmount(count * (parseInt(betAmount) || 0));
   }, [selectedNumbers.round5, betAmount]);
 
-  // Hàm format lại thời gian (giây) sang mm:ss
   const formatTime = (seconds) => {
     const hrs = Math.floor(seconds / 3600);
     const mins = Math.floor((seconds % 3600) / 60);
@@ -166,7 +215,7 @@ const GameDaiPhat = () => {
     return `${pad(hrs)}:${pad(mins)}:${pad(secs)}`;
   };
 
-  const toggleSelection = (round, position) => {
+  const toggleSelection = useCallback((round, position) => {
     setSelectedNumbers((prev) => ({
       ...prev,
       [round]: {
@@ -174,9 +223,9 @@ const GameDaiPhat = () => {
         [position]: !prev[round][position],
       },
     }));
-  };
+  }, []);
 
-  const handleChoose = async () => {
+  const handleChoose = useCallback(async () => {
     if (betAmount <= 0) {
       toast.error("Vui lòng nhập số tiền hợp lệ.");
       return;
@@ -210,14 +259,10 @@ const GameDaiPhat = () => {
     };
     try {
       await userAPI.placeBets(dataSave);
-      // toast.success("Chúc mừng, bạn đã đặt dữ liệu thành công!");
-      // hiển thị popup show success
       setShowSuccessPopup(true);
       setTimeout(() => setShowSuccessPopup(false), 2000);
 
-      // reset input amount
       setBetAmount("");
-      // reset round 5
       setSelectedNumbers((prev) => ({
         ...prev,
         round5: { A: false, S: false, H: false, X: false },
@@ -228,58 +273,7 @@ const GameDaiPhat = () => {
       console.log(error);
       toast.error("Đặt cược thất bại. Vui lòng thử lại.");
     }
-  };
-
-  const NumberBox = ({ round, position, isSelected, label, disabled }) => (
-    <div
-      onClick={() => !disabled && toggleSelection(round, position)}
-      className={`relative w-20 h-20 rounded-xl cursor-pointer active:scale-95 shadow-lg
-                ${
-                  isSelected
-                    ? "bg-gradient-to-br from-green-400 to-green-600 text-white shadow-green-300"
-                    : "bg-white text-gray-700 shadow-gray-200"
-                } border-2 ${
-        isSelected ? "border-green-500" : "border-gray-200"
-      }`}
-    >
-      <div className="absolute inset-0 flex items-center justify-center">
-        <span
-          className={`text-2xl font-bold 
-                       ${isSelected ? "text-white" : "text-red-500"}`}
-        >
-          {label}
-        </span>
-      </div>
-      {isSelected && (
-        <div
-          className="absolute -top-1 -right-1 w-6 h-6 bg-yellow-400 rounded-full 
-                      flex items-center justify-center animate-pulse"
-        >
-          <span className="text-xs font-bold text-green-800">✓</span>
-        </div>
-      )}
-      <div
-        className="absolute inset-0 rounded-xl bg-gradient-to-t from-black/10 to-transparent"
-        // Bỏ hiệu ứng hover
-        style={{ opacity: 0 }}
-      />
-    </div>
-  );
-
-  const ResultBall = ({ number, index }) => (
-    <div
-      className="w-8 h-8 bg-gradient-to-br from-red-400 to-red-600 rounded-full 
-                 flex items-center justify-center text-white font-bold text-lg shadow-lg 
-                 transform transition-all duration-500 hover:scale-110 animate-bounce
-                 border-2 border-white"
-      style={{
-        animationDelay: `${index * 100}ms`,
-        animationDuration: "2s",
-      }}
-    >
-      {number}
-    </div>
-  );
+  }, [betAmount, selectedCount, profileDetail?.balance, timer, selectedNumbers.round5, roomId, fetchRoomDetails, fetchProfile]);
 
   // Tab header
   const TabHeader = () => (
@@ -377,29 +371,25 @@ const GameDaiPhat = () => {
                 </h3>
                 <div className="grid grid-cols-4 gap-3">
                   <NumberBox
-                    round="round1"
-                    position="A"
+                    onClick={undefined}
                     isSelected={selectedNumbers.round1.A}
                     label="A"
                     disabled
                   />
                   <NumberBox
-                    round="round1"
-                    position="S"
+                    onClick={undefined}
                     isSelected={selectedNumbers.round1.S}
                     label="S"
                     disabled
                   />
                   <NumberBox
-                    round="round1"
-                    position="H"
+                    onClick={undefined}
                     isSelected={selectedNumbers.round1.H}
                     label="H"
                     disabled
                   />
                   <NumberBox
-                    round="round1"
-                    position="X"
+                    onClick={undefined}
                     isSelected={selectedNumbers.round1.X}
                     label="X"
                     disabled
@@ -415,34 +405,10 @@ const GameDaiPhat = () => {
                   Dữ liệu 2
                 </h3>
                 <div className="grid grid-cols-4 gap-3">
-                  <NumberBox
-                    round="round2"
-                    position="A"
-                    isSelected={selectedNumbers.round2.A}
-                    label="A"
-                    disabled
-                  />
-                  <NumberBox
-                    round="round2"
-                    position="S"
-                    isSelected={selectedNumbers.round2.S}
-                    label="S"
-                    disabled
-                  />
-                  <NumberBox
-                    round="round2"
-                    position="H"
-                    isSelected={selectedNumbers.round2.H}
-                    label="H"
-                    disabled
-                  />
-                  <NumberBox
-                    round="round2"
-                    position="X"
-                    isSelected={selectedNumbers.round2.X}
-                    label="X"
-                    disabled
-                  />
+                  <NumberBox onClick={undefined} isSelected={selectedNumbers.round2.A} label="A" disabled />
+                  <NumberBox onClick={undefined} isSelected={selectedNumbers.round2.S} label="S" disabled />
+                  <NumberBox onClick={undefined} isSelected={selectedNumbers.round2.H} label="H" disabled />
+                  <NumberBox onClick={undefined} isSelected={selectedNumbers.round2.X} label="X" disabled />
                 </div>
               </div>
               {/* Round 3 */}
@@ -454,34 +420,10 @@ const GameDaiPhat = () => {
                   Dữ liệu 3
                 </h3>
                 <div className="grid grid-cols-4 gap-3">
-                  <NumberBox
-                    round="round3"
-                    position="A"
-                    isSelected={selectedNumbers.round3.A}
-                    label="A"
-                    disabled
-                  />
-                  <NumberBox
-                    round="round3"
-                    position="S"
-                    isSelected={selectedNumbers.round3.S}
-                    label="S"
-                    disabled
-                  />
-                  <NumberBox
-                    round="round3"
-                    position="H"
-                    isSelected={selectedNumbers.round3.H}
-                    label="H"
-                    disabled
-                  />
-                  <NumberBox
-                    round="round3"
-                    position="X"
-                    isSelected={selectedNumbers.round3.X}
-                    label="X"
-                    disabled
-                  />
+                  <NumberBox onClick={undefined} isSelected={selectedNumbers.round3.A} label="A" disabled />
+                  <NumberBox onClick={undefined} isSelected={selectedNumbers.round3.S} label="S" disabled />
+                  <NumberBox onClick={undefined} isSelected={selectedNumbers.round3.H} label="H" disabled />
+                  <NumberBox onClick={undefined} isSelected={selectedNumbers.round3.X} label="X" disabled />
                 </div>
               </div>
               {/* Round 4 */}
@@ -493,34 +435,10 @@ const GameDaiPhat = () => {
                   Dữ liệu 4
                 </h3>
                 <div className="grid grid-cols-4 gap-3">
-                  <NumberBox
-                    round="round4"
-                    position="A"
-                    isSelected={selectedNumbers.round4.A}
-                    label="A"
-                    disabled
-                  />
-                  <NumberBox
-                    round="round4"
-                    position="S"
-                    isSelected={selectedNumbers.round4.S}
-                    label="S"
-                    disabled
-                  />
-                  <NumberBox
-                    round="round4"
-                    position="H"
-                    isSelected={selectedNumbers.round4.H}
-                    label="H"
-                    disabled
-                  />
-                  <NumberBox
-                    round="round4"
-                    position="X"
-                    isSelected={selectedNumbers.round4.X}
-                    label="X"
-                    disabled
-                  />
+                  <NumberBox onClick={undefined} isSelected={selectedNumbers.round4.A} label="A" disabled />
+                  <NumberBox onClick={undefined} isSelected={selectedNumbers.round4.S} label="S" disabled />
+                  <NumberBox onClick={undefined} isSelected={selectedNumbers.round4.H} label="H" disabled />
+                  <NumberBox onClick={undefined} isSelected={selectedNumbers.round4.X} label="X" disabled />
                 </div>
               </div>
               {/* Round 5 */}
@@ -532,30 +450,10 @@ const GameDaiPhat = () => {
                   Dữ liệu tổng
                 </h3>
                 <div className="grid grid-cols-4 gap-3">
-                  <NumberBox
-                    round="round5"
-                    position="A"
-                    isSelected={selectedNumbers.round5.A}
-                    label="A"
-                  />
-                  <NumberBox
-                    round="round5"
-                    position="S"
-                    isSelected={selectedNumbers.round5.S}
-                    label="S"
-                  />
-                  <NumberBox
-                    round="round5"
-                    position="H"
-                    isSelected={selectedNumbers.round5.H}
-                    label="H"
-                  />
-                  <NumberBox
-                    round="round5"
-                    position="X"
-                    isSelected={selectedNumbers.round5.X}
-                    label="X"
-                  />
+                  <NumberBox onClick={() => toggleSelection("round5", "A")} isSelected={selectedNumbers.round5.A} label="A" />
+                  <NumberBox onClick={() => toggleSelection("round5", "S")} isSelected={selectedNumbers.round5.S} label="S" />
+                  <NumberBox onClick={() => toggleSelection("round5", "H")} isSelected={selectedNumbers.round5.H} label="H" />
+                  <NumberBox onClick={() => toggleSelection("round5", "X")} isSelected={selectedNumbers.round5.X} label="X" />
                 </div>
               </div>
             </div>
@@ -638,7 +536,6 @@ const GameDaiPhat = () => {
                       </div>
                       <div className="flex items-center gap-1 mt-1">
                         <div className="text-sm text-gray-500">Kết quả:</div>
-                        {/* Hiển thị kết quả từng số trong box xanh, chữ trắng */}
                         {item?.resultNumbers &&
                           item.resultNumbers.map((num, idx) => (
                             <div
@@ -679,17 +576,15 @@ const GameDaiPhat = () => {
                     Đã hiển thị toàn bộ lịch sử.
                   </div>
                 )}
+                <div ref={historySentinelRef} />
               </div>
             )}
           </div>
         )}
       </div>
-      {/* popup đặt cược thành công */}
       {showSuccessPopup && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
-          {/* Overlay nền đen mờ */}
           <div className="fixed inset-0 bg-black opacity-30 z-40"></div>
-          {/* Popup nằm trên tất cả và có chiều rộng phù hợp */}
           <div className="relative z-50 w-[95%] max-w-sm mx-auto bg-white rounded-2xl shadow-2xl px-8 py-6 flex flex-col items-center animate-fade-in">
             <svg
               className="w-16 h-16 text-green-500 mb-4"

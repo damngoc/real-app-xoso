@@ -10,8 +10,8 @@ import {
 import { useNavigate } from "react-router-dom";
 import { authAPI } from "@/services/authApi";
 import { toast } from "react-toastify";
-import { logoutUser } from "@/utils/Auth";
-import { getUserStorage } from "@/utils/Auth";
+import { logoutUser } from "@/utils/auth";
+import { getUserStorage } from "@/utils/auth";
 
 export default function MyAccount() {
   const navigate = useNavigate();

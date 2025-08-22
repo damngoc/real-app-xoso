@@ -16,8 +16,8 @@ import { formatCurrency } from "@/utils/helper";
 import { toast } from "react-toastify";
 import { useNavigate } from "react-router-dom";
 import { authAPI } from "@/services/authApi";
-import { getUserStorage } from "@/utils/Auth";
-import { logoutUser } from "@/utils/Auth";
+import { getUserStorage } from "@/utils/auth";
+import { logoutUser } from "@/utils/auth";
 
 export default function Profile() {
   const navigate = useNavigate();

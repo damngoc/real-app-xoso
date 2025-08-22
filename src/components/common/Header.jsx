@@ -4,7 +4,7 @@ import { useBreadcrumb } from "@/contexts/BreadcrumbContext";
 import { toast } from "react-toastify";
 import { useNavigate } from "react-router-dom";
 import { ROUTES } from "@/config/constants";
-import { removeAuthToken } from "@/utils/Auth";
+import { removeAuthToken } from "@/utils/auth";
 
 const Header = ({ onMenuClick }) => {
   const navigate = useNavigate();

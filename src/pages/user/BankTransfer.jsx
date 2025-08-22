@@ -6,7 +6,7 @@ import { ArrowLeft } from "lucide-react";
 import { formatCurrency } from "@/utils/helper";
 import { userAPI } from "@/services/userApi";
 import { ROUTES } from "@/config/constants";
-import { getUserStorage } from "@/utils/Auth";
+import { getUserStorage } from "@/utils/auth";
 
 const BankTransfer = () => {
   const user = getUserStorage();

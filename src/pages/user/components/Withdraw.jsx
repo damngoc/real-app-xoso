@@ -4,7 +4,7 @@ import { toast } from "react-toastify";
 import { userAPI } from "@/services/userApi";
 import { useNavigate } from "react-router-dom";
 import { ROUTES } from "@/config/constants";
-import { getUserStorage } from "@/utils/Auth";
+import { getUserStorage } from "@/utils/auth";
 
 const moneys = [
   { value: "100000", label: "100K" },
