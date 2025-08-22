@@ -16,7 +16,7 @@ import { formatCurrency } from "@/utils/helper";
 import { useNavigate } from "react-router-dom";
 import "@/css/user/UserDashboard.scss";
 import { userAPI } from "@/services/userApi";
-import { setUserStorage } from "@/utils/Auth";
+import { setUserStorage } from "@/utils/auth";
 
 const UserDashboard = () => {
   const navigate = useNavigate();

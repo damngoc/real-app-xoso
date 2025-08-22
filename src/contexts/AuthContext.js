@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { authAPI } from '@/services/authApi';
 import { getUserFromToken } from '@/utils/auth';
-import { setUserToken, removeUserToken } from '@/utils/Auth';
+import { setUserToken, removeUserToken } from '@/utils/auth';
 
 const AuthContext = createContext();
 

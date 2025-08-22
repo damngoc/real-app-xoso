@@ -5,8 +5,8 @@ import { ROUTES } from "@/config/constants";
 import "@/css/user/Login.scss";
 import { authAPI } from "@/services/authApi";
 import { toast } from "react-toastify";
-import { setUserToken } from "@/utils/Auth";
-import { setCurrentRole } from "@/utils/Auth";
+import { setUserToken } from "@/utils/auth";
+import { setCurrentRole } from "@/utils/auth";
 import { Eye, EyeOff } from "lucide-react";
 
 const Login = () => {

@@ -5,7 +5,7 @@ import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 import { ROUTES } from "@/config/constants";
 import { authAPI } from "@/services/authApi";
-import { setAuthToken } from "@/utils/Auth";
+import { setAuthToken } from "@/utils/auth";
 
 export default function LoginForm() {
   const [username, setUsername] = useState("");
